@@ -11,21 +11,10 @@
 <script type="text/javascript" src="https://api.longdo.com/map3/?key=9bd2ac038108ec5023405cf9f20252fb"></script>
 <script>
     var map
-    function initOption() {
+    function init() {
       map = new longdo.Map({
-        layer: [longdo.Layers.NORMAL, longdo.Layers.TRAFFIC],
-        zoom: 10,
-        zoomRange: {
-          min: 9,
-          max: 11
-        },
-        location: {
-          lon: 102.912618,
-          lat: 15.879704
-        },
-        placeholder: document.getElementById('map'),
-        ui: longdo.UiComponent.None,
-        lastView: false
+          longdo: { lat: 15.8700031, lon: 102.9053971 },
+          placeholder: document.getElementById('map')
       });
     }
 </script>
