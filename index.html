@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Create Map Sample | Longdo Map</title>
+<title>Web Map</title>
 <style type="text/css">
   html { height: 100%; }
   body { margin: 0px; height: 100%; }
@@ -13,8 +13,16 @@
     var map
     function init() {
       map = new longdo.Map({
-          longdo: { lat: 15.8700031, lon: 102.9053971 },
-          placeholder: document.getElementById('map')
+          layer: [longdo.Layers.NORMAL, longdo.Layers.TRAFFIC],
+          zoom: 10,
+
+          location: {
+              lon: 100.5351375,
+              lat: 13.767734
+          },
+          placeholder: document.getElementById('map'),
+          ui: longdo.UiComponent.None,
+          lastView: true
       });
     }
 </script>
