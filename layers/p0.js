@@ -1,0 +1,1 @@
+var json__15 = {"type":"FeatureCollection","name":"_15","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"Name":"สำนักงานเกษตรอำเภอเปือยน้อย","no":"0"},"geometry":{"type":"Point","coordinates":[102.90802778,15.87008333]}}]}

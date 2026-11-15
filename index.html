@@ -1,35 +1,567 @@
-<!DOCTYPE HTML>
-<html>
+<!DOCTYPE html>
+<html lang="th">
 <head>
-<meta charset="UTF-8">
-<title>Web Map</title>
-<style type="text/css">
-  html { height: 100%; }
-  body { margin: 0px; height: 100%; }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SLIMEKK Web GIS</title>
+<script src="https://api.longdo.com/map3/?key=9bd2ac038108ec5023405cf9f20252fb"></script>
+<script src="https://unpkg.com/shpjs@latest/dist/shp.js"></script>
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://unpkg.com/@tmcw/togeojson@5.8.1/dist/togeojson.umd.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; font-family: Tahoma, sans-serif; }
   #map { height: 100%; }
-</style>
-<script type="text/javascript" src="https://api.longdo.com/map3/?key=9bd2ac038108ec5023405cf9f20252fb"></script>
-<script>
-    var map
-    function init() {
-      map = new longdo.Map({
-          layer: [longdo.Layers.NORMAL, longdo.Layers.TRAFFIC],
-          zoom: 10,
+  body.dragging #map { outline: 4px dashed #2e7d32; outline-offset: -4px; }
 
-          location: {
-              lon: 102.907957,
-              lat: 15.870038
-          },
-          placeholder: document.getElementById('map'),
-          //ui: longdo.UiComponent.Full,
-          //ui: longdo.UiComponent.Mobile,
-          ui: longdo.UiComponent.MobileWithFullLayerSelector,
-          lastView: true
-      });
-    }
-</script>
+  #panel { position: absolute; top: 10px; right: 10px; z-index: 1000; width: 290px;
+           max-height: calc(100% - 40px); overflow: auto; background: #fff;
+           border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.3); font-size: 14px; }
+  #panel h3 { margin: 0; padding: 10px 12px; background: #2e7d32; color: #fff;
+              font-size: 15px; cursor: pointer; border-radius: 8px 8px 0 0; }
+  #panelBody { padding: 4px 12px 10px; }
+  #panel.collapsed #panelBody { display: none; }
+  #panel select { width: 100%; padding: 4px; margin: 6px 0; }
+  .grp { margin-top: 8px; }
+  .grp-title { font-weight: bold; border-bottom: 1px solid #ddd; padding: 4px 0;
+               display: flex; gap: 6px; align-items: center; }
+  .lyr { display: flex; align-items: center; gap: 6px; padding: 3px 0 3px 4px; cursor: pointer; }
+  .nm { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .act { cursor: pointer; padding: 0 3px; font-size: 12px; }
+  .sym { width: 20px; height: 20px; flex: none; display: inline-flex;
+         align-items: center; justify-content: center; }
+  .sym img { max-width: 20px; max-height: 20px; }
+  .status { color: #999; font-size: 12px; }
+  .status.err { color: #d32f2f; }
+  .cls { margin: 0 0 6px 34px; font-size: 12px; }
+  .cls div { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+  .cls i { width: 14px; height: 12px; border: 1px solid #666; flex: none; }
+  .btn { display: inline-block; margin: 6px 0; padding: 5px 10px; background: #2e7d32;
+         color: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  .hint { font-size: 11px; color: #777; }
+  #fitBtn { width: 100%; margin-top: 10px; padding: 6px; border: 0; background: #6a1b9a;
+            color: #fff; border-radius: 4px; cursor: pointer; }
+
+  .pin { position: relative; width: 0; height: 0; }
+  .pin img { position: absolute; width: 28px; height: 28px; left: -14px; top: -14px; }
+  .pin .dot { position: absolute; width: 10px; height: 10px; left: -7px; top: -7px;
+              border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 2px #000; }
+  .pin .lbl { position: absolute; left: 0; transform: translateX(-50%); white-space: nowrap;
+              font-size: 12px; font-weight: bold; color: #222;
+              text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; }
+  .pin.poly .lbl { top: -8px; color: #b71c1c; }
+
+  /* ซ่อนกล่องข้อความสถานะด้านล่าง */
+  #log { display: none; }
+</style>
 </head>
-<body onload="init();">
-    <div id="map"></div>
+<body onload="init()">
+<div id="map"></div>
+<div id="panel">
+  <h3 onclick="this.parentNode.classList.toggle('collapsed')">ชั้นข้อมูล ▾</h3>
+  <div id="panelBody">
+    <div class="grp">
+      <div class="grp-title">แผนที่ฐาน</div>
+      <select id="baseSel"></select>
+      <div id="baseOv"></div>
+    </div>
+    <div id="layerGroups"></div>
+    <div class="grp">
+      <div class="grp-title">เพิ่มชั้นข้อมูลของคุณ</div>
+      <label class="btn">+ เลือกไฟล์
+        <input type="file" id="fileIn" multiple hidden
+               accept=".geojson,.json,.kml,.kmz,.zip,.shp,.dbf,.prj,.cpg,.shx">
+      </label>
+      <div class="hint">GeoJSON, KML, KMZ, Shapefile (.zip หรือเลือก .shp .dbf .prj พร้อมกัน)</div>
+      <div id="userList"></div>
+    </div>
+    <button id="fitBtn">ซูมไปพื้นที่โครงการ</button>
+  </div>
+</div>
+<div id="log"></div>
+
+<script>
+/* ===================== ส่วนที่ 1: ตั้งค่าเลเยอร์และสี ===================== */
+const GROUPS = [
+  {
+    name: 'กลุ่มสถานีตรวจวัดอากาศ/ความชื้นดิน',
+    defaultOn: true, exclusive: false,
+    layers: [
+      { id: 'p0', file: 'layers/p0.js', type: 'point', icon: 'icons/p0.svg', color: '#1f78b4', z: 90,
+        legend: 'สำนักงานเกษตรอำเภอเปือยน้อย', label: 'สำนักงานเกษตรอำเภอเปือยน้อย' },
+      { id: 'p1', file: 'layers/p1.js', type: 'point', icon: 'icons/p1.svg', color: '#33a02c', z: 90,
+        legend: 'อะโวคาโด', label: 'อะโวคาโด' },
+      { id: 'p2', file: 'layers/p2.js', type: 'point', icon: 'icons/p2.svg', color: '#e31a1c', z: 90,
+        legend: 'มะม่วงเขียวเสวย', label: 'มะม่วงเขียวเสวย' },
+      { id: 'p3', file: 'layers/p3.js', type: 'point', icon: 'icons/p3.svg', color: '#ff7f00', z: 90,
+        legend: 'มะม่วงน้ำดอกไม้', label: 'มะม่วงน้ำดอกไม้' },
+      { id: 'p4', file: 'layers/p4.js', type: 'point', icon: 'icons/p4.svg', color: '#6a3d9a', z: 90,
+        legend: 'มะม่วงน้ำดอกไม้', label: 'มะม่วงน้ำดอกไม้' },
+      { id: 'p5', file: 'layers/p5.js', type: 'point', icon: 'icons/p5.svg', color: '#b15928', z: 90,
+        legend: 'มะม่วงน้ำดอกไม้', label: 'มะม่วงน้ำดอกไม้' }
+    ]
+  },
+  {
+    name: 'กลุ่มขอบเขตการปกครอง',
+    defaultOn: true, exclusive: false,
+    layers: [
+      { id: 'tambon', file: 'layers/tambon.js', type: 'outline', color: '#d32f2f', width: 2, z: 60,
+        legend: 'ขอบเขตตำบล', label: 'ขอบเขตตำบล' },
+      
+      /* ตั้งค่า type เป็น 'polygon' เพื่อให้ทาสีข้างใน (fill) 
+         - ถ้าไม่ต้องการให้มีเส้นขอบ ให้กำหนด lineColor หรือใช้สีเดียวกับ fillColor
+         - fillOpacity คือความโปร่งใส (0.0 ถึง 1.0) */
+      { id: 'project', file: 'layers/project.js', type: 'polygon', 
+        color: 'transparent', fillColor: '#9c27b0', fillOpacity: 0.35, width: 1, z: 70,
+        legend: 'พื้นที่โครงการ', label: 'พื้นที่โครงการ', fit: true }
+    ]
+  },
+  {
+    name: 'กลุ่มชั้นข้อมูล',
+    defaultOn: false, exclusive: false,
+    layers: [
+      { id: 'well', file: 'layers/well.js', type: 'point', icon: null, color: '#0277bd', z: 80,
+        legend: 'บ่อบาดาล', labelField: 'หมายเลขบ่อ' },
+      { id: 'lu', file: 'layers/lu.js', type: 'category', field: 'class', z: 10,
+        legend: 'การใช้ประโยชน์ที่ดิน' },
+      { id: 'soil', file: 'layers/soil.js', type: 'category', field: 'soilserien', z: 11,
+        legend: 'ชุดดิน' },
+      { id: 'drought', file: 'layers/drought.js', type: 'category', field: 'DR_DESTH', z: 12,
+        legend: 'พื้นที่เสี่ยงภัยแล้ง' },
+      { id: 'geology', file: 'layers/geology.js', type: 'category', field: 'Formation', z: 13,
+        legend: 'หน่วยหินทางธรณีวิทยา' },
+      { id: 'hydrology', file: 'layers/hydrology.js', type: 'category', field: 'DESCRIPT_T', z: 14,
+        legend: 'อุทกธรณีวิทยา' }
+    ]
+  }
+];
+
+const BASEMAPS = [
+  ['NORMAL', 'Longdo แผนที่ปกติ'], ['GRAY', 'Longdo สีเทา'], ['LIGHT', 'Longdo สีอ่อน'],
+  ['DARK', 'Longdo สีเข้ม'], ['EASY', 'Longdo แบบเรียบง่าย'], ['POLITICAL', 'เขตการปกครอง'],
+  ['THAICHOTE', 'ภาพดาวเทียมไทยโชต'],
+  ['GOOGLE_SATELLITE', 'Google ภาพดาวเทียม'], ['GOOGLE_HYBRID', 'Google ดาวเทียม + ถนน'],
+  ['GOOGLE_ROADMAP', 'Google แผนที่ถนน'],
+  ['SPHERE_HYBRID', 'Sphere ดาวเทียม + ถนน'], ['SPHERE_STREETS', 'Sphere ถนน'],
+  ['SPHERE_SIMPLE', 'Sphere เรียบง่าย'], ['SPHERE_IMAGES', 'Sphere ภาพถ่าย'],
+  ['OSM', 'OpenStreetMap'], ['OSM_COLORFUL', 'OSM สีสด'], ['OSM_GRAYBEARD', 'OSM โทนเทา'],
+  ['OSM_NEUTRINO', 'OSM Neutrino'], ['OSM_SHADOW', 'OSM Shadow'],
+  ['TOMTOM_NORMAL', 'TomTom'], ['MAPLIBRE_WORLD', 'MapLibre World']
+];
+const BASE_OVERLAYS = [
+  ['TRAFFIC', 'การจราจร (Longdo)'], ['GOOGLE_TRAFFIC', 'การจราจร (Google)'],
+  ['RASTER_POI', 'สถานที่สำคัญ (POI)']
+];
+
+const PALETTE = ['#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e','#e6ab02','#a6761d',
+                 '#1f78b4','#b2df8a','#fb9a99','#fdbf6f','#cab2d6','#ffff99','#8dd3c7',
+                 '#bebada','#fb8072','#80b1d3','#b3de69','#fccde5','#bc80bd'];
+const FILL_OPACITY = 0.6;
+
+/* ===================== ส่วนที่ 2: ระบบทำงาน ===================== */
+let map;
+const STATE = {};
+
+function log(msg, isErr) {
+  const box = document.getElementById('log');
+  box.innerHTML += `<div class="${isErr ? 'e' : ''}">${isErr ? '✖' : '✔'} ${msg}</div>`;
+  (isErr ? console.error : console.log)(msg);
+}
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const toLoc = c => ({ lon: +c[0], lat: +c[1] });
+function rgba(hex, a) {
+  if (hex === 'transparent' || !hex) return 'transparent';
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+}
+
+function* parts(g) {
+  if (!g) return;
+  if (g.type === 'GeometryCollection') for (const x of g.geometries) yield* parts(x);
+  else yield g;
+}
+
+function geoBounds(geo) {
+  const b = { minLon: 180, minLat: 90, maxLon: -180, maxLat: -90 };
+  const walk = c => {
+    if (typeof c[0] === 'number') {
+      b.minLon = Math.min(b.minLon, c[0]); b.maxLon = Math.max(b.maxLon, c[0]);
+      b.minLat = Math.min(b.minLat, c[1]); b.maxLat = Math.max(b.maxLat, c[1]);
+    } else c.forEach(walk);
+  };
+  geo.features.forEach(f => { for (const g of parts(f.geometry)) g.coordinates && walk(g.coordinates); });
+  return b;
+}
+
+function zoomTo(b) {
+  if (!b || b.minLon > b.maxLon) return;
+  try { map.bound(b); }
+  catch (e) {
+    const el = document.getElementById('map');
+    const lonSpan = Math.max(b.maxLon - b.minLon, 0.001);
+    const latSpan = Math.max(b.maxLat - b.minLat, 0.001);
+    const z = Math.floor(Math.min(Math.log2(el.clientWidth * 360 / 256 / lonSpan),
+                                  Math.log2(el.clientHeight * 360 / 256 / (latSpan * 1.1))));
+    map.location({ lon: (b.minLon + b.maxLon) / 2, lat: (b.minLat + b.maxLat) / 2 });
+    map.zoom(Math.min(Math.max(z, 5), 18));
+  }
+}
+
+let queue = Promise.resolve();
+function readJsLayer(file) {
+  const job = queue.then(() => new Promise((resolve, reject) => {
+    const before = new Set(Object.keys(window));
+    const sc = document.createElement('script');
+    sc.src = file;
+    sc.onload = () => {
+      const key = Object.keys(window).filter(k => !before.has(k))
+        .find(k => window[k] && window[k].type === 'FeatureCollection');
+      if (!key) return reject(new Error(`${file}: เปิดไฟล์ได้ แต่ไม่พบข้อมูล GeoJSON ข้างใน`));
+      const geo = window[key], b = geoBounds(geo);
+      resolve(geo);
+    };
+    sc.onerror = () => reject(new Error(`หาไฟล์ ${file} ไม่เจอ`));
+    document.head.appendChild(sc);
+  }));
+  queue = job.catch(() => {});
+  return job;
+}
+
+function ringInfo(r) {
+  let a = 0, x = 0, y = 0;
+  for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+    const f = r[j][0] * r[i][1] - r[i][0] * r[j][1];
+    a += f; x += (r[j][0] + r[i][0]) * f; y += (r[j][1] + r[i][1]) * f;
+  }
+  return { area: Math.abs(a / 2), center: a ? [x / (3 * a), y / (3 * a)] : r[0] };
+}
+
+function popupHtml(cfg, p) {
+  const keys = cfg.type === 'category' ? [cfg.field]
+             : Object.keys(p).filter(k => p[k] === null || typeof p[k] !== 'object');
+  return keys.map(k => `<b>${esc(k)}:</b> ${esc(p[k])}`).join('<br>');
+}
+
+function pinHtml(icon, text, color) {
+  const sym = icon ? `<img src="${icon}">`
+                   : `<span class="dot" style="background:${color || '#0277bd'}"></span>`;
+  const top = icon ? 14 : 6;
+  const lbl = text ? `<span class="lbl" style="top:${top}px">${esc(text)}</span>` : '';
+  return `<div class="pin">${sym}${lbl}</div>`;
+}
+
+function buildOverlays(s, geo) {
+  const cfg = s.cfg, out = [];
+
+  if (cfg.type === 'category') {
+    const vals = [...new Set(geo.features.map(f => f.properties?.[cfg.field]))]
+      .filter(v => v !== null && v !== undefined && v !== '')
+      .sort((a, b) => String(a).localeCompare(String(b), 'th'));
+    vals.forEach((v, i) => s.colors[v] = PALETTE[i % PALETTE.length]);
+  }
+
+  for (const f of geo.features) {
+    const p = f.properties || {};
+    const detail = popupHtml(cfg, p);
+    const text = cfg.labelField ? p[cfg.labelField] : cfg.label;
+
+    for (const g of parts(f.geometry)) {
+      const t = g.type, C = g.coordinates;
+
+      if (t === 'Point' || t === 'MultiPoint') {
+        (t === 'Point' ? [C] : C).forEach(c => out.push(new longdo.Marker(toLoc(c), {
+          title: cfg.legend, detail,
+          icon: { html: pinHtml(cfg.icon, text, cfg.color), offset: { x: 0, y: 0 } }
+        })));
+
+      } else if (t === 'LineString' || t === 'MultiLineString') {
+        (t === 'LineString' ? [C] : C).forEach(l => out.push(new longdo.Polyline(l.map(toLoc), {
+          title: cfg.legend, detail, lineColor: cfg.color || '#e66101', lineWidth: cfg.width || 2
+        })));
+
+      } else if (t === 'Polygon' || t === 'MultiPolygon') {
+        const polys = t === 'Polygon' ? [C] : C;
+
+        if (cfg.type === 'outline') {
+          polys.forEach(pg => pg.forEach(ring => out.push(new longdo.Polyline(ring.map(toLoc), {
+            title: cfg.legend, detail, lineColor: cfg.color, lineWidth: cfg.width || 2
+          }))));
+          if (text) {
+            const best = polys.map(pg => ringInfo(pg[0])).sort((a, b) => b.area - a.area)[0];
+            out.push(new longdo.Marker(toLoc(best.center), {
+              clickable: false,
+              icon: { html: `<div class="pin poly"><span class="lbl">${esc(text)}</span></div>`,
+                      offset: { x: 0, y: 0 } }
+            }));
+          }
+        } else {
+          const isCat = cfg.type === 'category';
+          const col = isCat ? (s.colors[p[cfg.field]] || '#999999') : (cfg.fillColor || cfg.color);
+          const lineCol = isCat ? 'rgba(60,60,60,0.6)' : (cfg.color || 'transparent');
+          polys.forEach(pg => out.push(new longdo.Polygon(pg[0].map(toLoc), {
+            title: cfg.legend, detail,
+            lineColor: lineCol,
+            lineWidth: isCat ? 0.5 : (cfg.width ?? 1),
+            fillColor: rgba(col, isCat ? FILL_OPACITY : (cfg.fillOpacity ?? 0.4))
+          })));
+        }
+      }
+    }
+  }
+  return out;
+}
+
+async function loadLayer(s) {
+  s.status.textContent = 'กำลังโหลด...';
+  const geo = await readJsLayer(s.cfg.file);
+  s.overlays = buildOverlays(s, geo);
+  s.bounds = geoBounds(geo);
+  s.loaded = true;
+  s.status.textContent = '';
+  if (s.cfg.fit) zoomTo(s.bounds);
+}
+
+function addAll(s) {
+  if (s.onMap) return;
+  try { s.overlays.forEach(o => map.Overlays.add(o)); } catch (e) {}
+  s.onMap = true;
+}
+function removeAll(s) {
+  if (!s.onMap) return;
+  try { s.overlays.forEach(o => map.Overlays.remove(o)); } catch (e) {}
+  s.onMap = false;
+}
+
+async function setVisible(s, on) {
+  s.visible = on;
+  if (!on) { removeAll(s); renderLegend(s); return; }
+  if (!s.loaded) {
+    s.loading ??= loadLayer(s);
+    try { await s.loading; }
+    catch (e) {
+      s.status.textContent = 'โหลดไม่ได้'; s.status.classList.add('err');
+      s.loading = null; return;
+    }
+  }
+  if (!s.visible || s.onMap) return;
+  const above = Object.values(STATE)
+    .filter(t => t.onMap && t.cfg.z > s.cfg.z)
+    .sort((a, b) => a.cfg.z - b.cfg.z);
+  above.forEach(removeAll);
+  addAll(s);
+  above.forEach(addAll);
+  renderLegend(s);
+}
+
+function toggleLayer(s, on) {
+  s.cb.checked = on;
+  if (on && s.group.exclusive) {
+    s.group.layers.map(c => STATE[c.id])
+      .filter(t => t && t !== s && t.visible)
+      .forEach(t => { t.cb.checked = false; setVisible(t, false); });
+  }
+  setVisible(s, on);
+}
+
+function symbolHtml(cfg) {
+  if (cfg.type === 'point')
+    return cfg.icon ? `<img src="${cfg.icon}">`
+      : `<span style="width:10px;height:10px;border-radius:50%;background:${cfg.color || '#0277bd'};border:2px solid #fff;box-shadow:0 0 2px #000"></span>`;
+  if (cfg.type === 'outline')
+    return `<span style="width:14px;height:12px;border:2px solid ${cfg.color}"></span>`;
+  if (cfg.type === 'polygon' || cfg.type === 'user')
+    return `<span style="width:14px;height:12px;border:1px solid ${cfg.color || '#333'};background:${rgba(cfg.fillColor || cfg.color, 0.6)}"></span>`;
+  return `<span style="width:14px;height:12px;border:1px solid #666;
+          background:linear-gradient(90deg,${PALETTE[0]} 33%,${PALETTE[1]} 33% 66%,${PALETTE[2]} 66%)"></span>`;
+}
+
+function renderLegend(s) {
+  if (s.cfg.type !== 'category') return;
+  s.legendBox.innerHTML = s.visible && s.loaded
+    ? Object.entries(s.colors).map(([v, c]) =>
+        `<div><i style="background:${rgba(c, FILL_OPACITY)}"></i>${esc(v)}</div>`).join('')
+    : '';
+}
+
+function createRow(cfg, group, container, removable) {
+  const row = document.createElement('label');
+  row.className = 'lyr';
+  row.innerHTML = `<input type="checkbox"><span class="sym">${symbolHtml(cfg)}</span>
+    <span class="nm" title="${esc(cfg.legend)}">${esc(cfg.legend)}</span><span class="status"></span>
+    ${removable ? '<span class="act" data-a="zoom" title="ซูมไป">🔍</span><span class="act" data-a="del" title="ลบ">✖</span>' : ''}`;
+  const legendBox = document.createElement('div');
+  legendBox.className = 'cls';
+
+  const s = STATE[cfg.id] = {
+    cfg, group, overlays: [], colors: {},
+    visible: false, loaded: false, onMap: false,
+    cb: row.querySelector('input'), status: row.querySelector('.status'), legendBox, row
+  };
+  s.cb.addEventListener('change', () => toggleLayer(s, s.cb.checked));
+
+  row.querySelectorAll('.act').forEach(btn => btn.addEventListener('click', e => {
+    e.preventDefault();
+    if (btn.dataset.a === 'zoom') zoomTo(s.bounds);
+    if (btn.dataset.a === 'del') {
+      removeAll(s); row.remove(); legendBox.remove();
+      group.layers = group.layers.filter(c => c !== cfg);
+      delete STATE[cfg.id];
+    }
+  }));
+  container.append(row, legendBox);
+  return s;
+}
+
+function buildPanel() {
+  const body = document.getElementById('layerGroups');
+  GROUPS.forEach(g => {
+    const box = document.createElement('div');
+    box.className = 'grp';
+    box.innerHTML = `<label class="grp-title">${g.exclusive ? '' : '<input type="checkbox">'}${g.name}</label>`;
+    g.layers.forEach(cfg => createRow(cfg, g, box, false));
+    const gcb = box.querySelector('.grp-title input');
+    if (gcb) {
+      gcb.checked = g.defaultOn;
+      gcb.addEventListener('change', () =>
+        g.layers.forEach(c => toggleLayer(STATE[c.id], gcb.checked)));
+    }
+    body.appendChild(box);
+  });
+}
+
+function buildBasemap() {
+  const L = longdo.Layers || {};
+  const sel = document.getElementById('baseSel');
+  const avail = BASEMAPS.filter(([k]) => L[k]);
+  sel.innerHTML = avail.map(([k, t]) => `<option value="${k}">${t}</option>`).join('');
+  if (L.NORMAL) sel.value = 'NORMAL';
+  sel.addEventListener('change', () => {
+    try { map.Layers.setBase(L[sel.value]); } catch (e) {}
+  });
+
+  const ov = document.getElementById('baseOv');
+  BASE_OVERLAYS.filter(([k]) => L[k]).forEach(([k, t]) => {
+    const r = document.createElement('label');
+    r.className = 'lyr';
+    r.innerHTML = `<input type="checkbox"> ${t}`;
+    r.querySelector('input').addEventListener('change', e => {
+      try { e.target.checked ? map.Layers.add(L[k]) : map.Layers.remove(L[k]); } catch (err) {}
+    });
+    ov.appendChild(r);
+  });
+}
+
+const USER_GROUP = { name: 'ชั้นข้อมูลที่เพิ่มเอง', exclusive: false, layers: [] };
+let userCount = 0;
+
+function addUserLayer(name, geo) {
+  if (geo.type === 'Feature') geo = { type: 'FeatureCollection', features: [geo] };
+  if (!geo.features || !geo.features.length) throw new Error(`${name}: ไม่มีข้อมูล`);
+  const b = geoBounds(geo);
+
+  userCount++;
+  const keys = Object.keys(geo.features[0].properties || {});
+  const cfg = {
+    id: 'u' + userCount, type: 'user', legend: name, width: 2,
+    color: PALETTE[(userCount * 3) % PALETTE.length],
+    z: 50 + userCount * 0.01,
+    labelField: keys.find(k => /^(name|ชื่อ)$/i.test(k))
+  };
+  USER_GROUP.layers.push(cfg);
+  const s = createRow(cfg, USER_GROUP, document.getElementById('userList'), true);
+  s.overlays = buildOverlays(s, geo);
+  s.bounds = b;
+  s.loaded = true;
+  toggleLayer(s, true);
+  zoomTo(b);
+}
+
+async function handleFiles(fileList) {
+  const files = [...fileList];
+  const ext = f => f.name.split('.').pop().toLowerCase();
+
+  for (const s of files.filter(f => ext(f) === 'shp')) {
+    try {
+      const base = s.name.slice(0, -4).toLowerCase();
+      const find = e => files.find(f => f.name.toLowerCase() === `${base}.${e}`);
+      const dbf = find('dbf'), prj = find('prj'), cpg = find('cpg');
+      if (!dbf) throw new Error(`ต้องเลือก .dbf คู่กับ .shp`);
+      const geo = shp.combine([
+        await shp.parseShp(await s.arrayBuffer(), prj ? await prj.text() : undefined),
+        await shp.parseDbf(await dbf.arrayBuffer(), cpg ? await cpg.text() : undefined)
+      ]);
+      addUserLayer(s.name, geo);
+    } catch (e) { log(e.message, true); }
+  }
+
+  for (const f of files) {
+    const e = ext(f);
+    try {
+      if (e === 'geojson' || e === 'json') {
+        addUserLayer(f.name, JSON.parse(await f.text()));
+      } else if (e === 'kml') {
+        addUserLayer(f.name, toGeoJSON.kml(new DOMParser().parseFromString(await f.text(), 'text/xml')));
+      } else if (e === 'kmz') {
+        const zip = await JSZip.loadAsync(await f.arrayBuffer());
+        const k = Object.values(zip.files).find(z => z.name.toLowerCase().endsWith('.kml'));
+        addUserLayer(f.name, toGeoJSON.kml(new DOMParser().parseFromString(await k.async('string'), 'text/xml')));
+      } else if (e === 'zip') {
+        const r = await shp(await f.arrayBuffer());
+        (Array.isArray(r) ? r : [r]).forEach(g => addUserLayer(g.fileName || f.name, g));
+      }
+    } catch (err) {}
+  }
+}
+
+function setupUpload() {
+  const input = document.getElementById('fileIn');
+  input.addEventListener('change', () => { handleFiles(input.files); input.value = ''; });
+  document.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
+  document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    document.body.classList.remove('dragging');
+    if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  });
+}
+
+let started = false;
+function startLayers() {
+  if (started) return;
+  started = true;
+  GROUPS.filter(g => g.defaultOn)
+        .forEach(g => g.layers.forEach(c => toggleLayer(STATE[c.id], true)));
+}
+
+function init() {
+  if (typeof longdo === 'undefined') return;
+  buildPanel();
+  setupUpload();
+
+  try {
+    map = new longdo.Map({
+      placeholder: document.getElementById('map'),
+      location: { lon: 102.91, lat: 15.87 },
+      zoom: 11,
+      lastView: false
+    });
+  } catch (e) { return; }
+
+  buildBasemap();
+
+  document.getElementById('fitBtn').addEventListener('click', () => {
+    const s = STATE.project;
+    if (s && s.bounds) zoomTo(s.bounds);
+    else if (s) toggleLayer(s, true);
+  });
+
+  try {
+    const READY = (longdo.EventName && longdo.EventName.Ready) || 'ready';
+    map.Event.bind(READY, startLayers);
+  } catch (e) {}
+  setTimeout(startLayers, 3000);
+}
+</script>
 </body>
 </html>
