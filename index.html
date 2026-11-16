@@ -49,9 +49,6 @@
               font-size: 12px; font-weight: bold; color: #222;
               text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff; }
   .pin.poly .lbl { top: -8px; color: #b71c1c; }
-
-  /* ซ่อนกล่องข้อความสถานะด้านล่าง */
-  #log { display: none; }
 </style>
 </head>
 <body onload="init()">
@@ -71,32 +68,53 @@
         <input type="file" id="fileIn" multiple hidden
                accept=".geojson,.json,.kml,.kmz,.zip,.shp,.dbf,.prj,.cpg,.shx">
       </label>
-      <div class="hint">GeoJSON, KML, KMZ, Shapefile (.zip หรือเลือก .shp .dbf .prj พร้อมกัน)</div>
+      <div class="hint">GeoJSON, KML, KMZ, Shapefile (.zip หรือเลือก .shp .dbf .prj พร้อมกัน)
+        หรือลากไฟล์มาวางบนแผนที่</div>
       <div id="userList"></div>
     </div>
     <button id="fitBtn">ซูมไปพื้นที่โครงการ</button>
   </div>
 </div>
-<div id="log"></div>
 
 <script>
-/* ===================== ส่วนที่ 1: ตั้งค่าเลเยอร์และสี ===================== */
+/* ============================================================
+   ส่วนที่ 1: ตั้งค่า (แก้เฉพาะส่วนนี้)
+   ============================================================ */
+
+/* ---------- 1.1 มุมมองเริ่มต้น ---------- */
+const VIEW = {
+  center: { lon: 102.91, lat: 15.87 },  // จุดกึ่งกลางตอนเปิดเว็บ
+  zoom: 10,                             // ระดับซูมตอนเปิดเว็บ (เลขน้อย = มองไกล)
+  fitToProject: true,                   // true = ซูมไปพื้นที่โครงการเมื่อโหลดเสร็จ
+                                        // false = ใช้ center และ zoom ด้านบนตลอด
+  fitPadding: 0.1                       // ระยะเผื่อรอบพื้นที่โครงการ
+                                        // 0 = พอดีขอบ, 0.5 = ถอยออกประมาณ 1 ระดับ, 1.5 = ประมาณ 2 ระดับ
+};
+
+/* ---------- 1.2 ชั้นข้อมูลและสี ----------
+   ค่าสีใช้รหัสแบบ '#rrggbb' เช่น '#ff0000'
+   point    : icon (ไฟล์ไอคอน) หรือ color (สีจุดกลมเมื่อ icon เป็น null)
+   outline  : color = สีเส้น, width = ความหนาเส้น
+   polygon  : fillColor = สีพื้น, fillOpacity = ความทึบ 0-1,
+              color = สีขอบ, width = ความหนาขอบ (0 = ไม่มีขอบ)
+   category : customColors = สีตามค่าในฟิลด์, fillOpacity, color, width (0 = ไม่มีขอบ)
+*/
 const GROUPS = [
   {
     name: 'กลุ่มสถานีตรวจวัดอากาศ/ความชื้นดิน',
     defaultOn: true, exclusive: false,
     layers: [
-      { id: 'p0', file: 'layers/p0.js', type: 'point', icon: 'icons/p0.svg', color: '#1f78b4', z: 90,
+      { id: 'p0', file: 'layers/p0.js', type: 'point', icon: 'icons/p0.svg', z: 90,
         legend: 'สำนักงานเกษตรอำเภอเปือยน้อย', label: 'สำนักงานเกษตรอำเภอเปือยน้อย' },
-      { id: 'p1', file: 'layers/p1.js', type: 'point', icon: 'icons/p1.svg', color: '#33a02c', z: 90,
+      { id: 'p1', file: 'layers/p1.js', type: 'point', icon: 'icons/p1.svg', z: 90,
         legend: 'อะโวคาโด', label: 'อะโวคาโด' },
-      { id: 'p2', file: 'layers/p2.js', type: 'point', icon: 'icons/p2.svg', color: '#e31a1c', z: 90,
+      { id: 'p2', file: 'layers/p2.js', type: 'point', icon: 'icons/p2.svg', z: 90,
         legend: 'มะม่วงเขียวเสวย', label: 'มะม่วงเขียวเสวย' },
-      { id: 'p3', file: 'layers/p3.js', type: 'point', icon: 'icons/p3.svg', color: '#ff7f00', z: 90,
+      { id: 'p3', file: 'layers/p3.js', type: 'point', icon: 'icons/p3.svg', z: 90,
         legend: 'มะม่วงน้ำดอกไม้', label: 'มะม่วงน้ำดอกไม้' },
-      { id: 'p4', file: 'layers/p4.js', type: 'point', icon: 'icons/p4.svg', color: '#6a3d9a', z: 90,
+      { id: 'p4', file: 'layers/p4.js', type: 'point', icon: 'icons/p4.svg', z: 90,
         legend: 'มะม่วงน้ำดอกไม้', label: 'มะม่วงน้ำดอกไม้' },
-      { id: 'p5', file: 'layers/p5.js', type: 'point', icon: 'icons/p5.svg', color: '#b15928', z: 90,
+      { id: 'p5', file: 'layers/p5.js', type: 'point', icon: 'icons/p5.svg', z: 90,
         legend: 'มะม่วงน้ำดอกไม้', label: 'มะม่วงน้ำดอกไม้' }
     ]
   },
@@ -104,14 +122,11 @@ const GROUPS = [
     name: 'กลุ่มขอบเขตการปกครอง',
     defaultOn: true, exclusive: false,
     layers: [
-      { id: 'tambon', file: 'layers/tambon.js', type: 'outline', color: '#d32f2f', width: 2, z: 60,
+      { id: 'tambon', file: 'layers/tambon.js', type: 'outline',
+        color: '#d32f2f', width: 2, z: 60,
         legend: 'ขอบเขตตำบล', labelField: 'TAM_NAM_T' },
-      
-      /* ตั้งค่า type เป็น 'polygon' เพื่อให้ทาสีข้างใน (fill) 
-         - ถ้าไม่ต้องการให้มีเส้นขอบ ให้กำหนด lineColor หรือใช้สีเดียวกับ fillColor
-         - fillOpacity คือความโปร่งใส (0.0 ถึง 1.0) */
-      { id: 'project', file: 'layers/project.js', type: 'polygon', 
-        color: 'transparent', fillColor: '#9c27b0', fillOpacity: 0.35, width: 1, z: 70,
+      { id: 'project', file: 'layers/project.js', type: 'outline',
+        color: '#edcf26', width: 4, z: 70,
         legend: 'พื้นที่โครงการ', label: 'พื้นที่โครงการ', fit: true }
     ]
   },
@@ -119,22 +134,81 @@ const GROUPS = [
     name: 'กลุ่มชั้นข้อมูล',
     defaultOn: false, exclusive: false,
     layers: [
-      { id: 'well', file: 'layers/well.js', type: 'point', icon: null, color: '#0277bd', z: 80,
+      { id: 'well', file: 'layers/well.js', type: 'point', icon: null,
+        color: '#0277bd', z: 80,
         legend: 'บ่อบาดาล', labelField: 'หมายเลขบ่อ' },
+
       { id: 'lu', file: 'layers/lu.js', type: 'category', field: 'class', z: 10,
-        legend: 'การใช้ประโยชน์ที่ดิน' },
+        legend: 'การใช้ประโยชน์ที่ดิน',
+        fillOpacity: 0.6, width: 0, color: '#555555',
+        customColors: {
+          // 'ค่าในฟิลด์': '#รหัสสี',
+          'กล้วย': '#fbffb5',
+          'ข้าวโพด': '#d1fe6d',
+          'นาข้าว': '#fffc0b',
+          'ปศุสัตว์': '#ffd17b',
+          'ป่าไม้': '#06704c',
+          'ปาล์มน้ำมัน': '#33aa00',
+          'พื้นที่เกษตรกรรม': '#ceffc3',
+          'พื้นที่ชุมชน': '#f00002',
+          'พื้นที่เบ็ดเตล็ด': '#9c9b9c',
+          'มะม่วง': '#bdfee8',
+          'มันสำปะหลัง': '#feecae',
+          'ยางพารา': '#4d7305',
+          'ยูคาลิปตัส': '#aba40d',
+          'สัก': '#e2e802',
+          'เหมือง': '#cccccc',
+          'แหล่งน้ำ': '#0061e4',
+          'อ้อย': '#fdff6c',
+          'อุตสาหกรรม': '#6f22e0',
+        }
+      },
       { id: 'soil', file: 'layers/soil.js', type: 'category', field: 'soilserien', z: 11,
-        legend: 'ชุดดิน' },
+        legend: 'ชุดดิน',
+        fillOpacity: 0.6, width: 0, color: '#555555',
+        customColors: {
+          'กุลาร้องไห้': '#95cb78',
+          'คง': '#4f58b3',
+          'โนนแดง': '#eef3a3',
+          'บ้านไผ่': '#519389',
+          'พล': '#a665e7',
+          'พื้นที่น้ำ': '#0061e4',
+          'มหาสารคาม': '#ffe57e',
+          'ร้อยเอ็ด': '#a0ead1',
+          'อุบล': '#faacaa',
+        }
+      },
       { id: 'drought', file: 'layers/drought.js', type: 'category', field: 'DR_DESTH', z: 12,
-        legend: 'พื้นที่เสี่ยงภัยแล้ง' },
+        legend: 'พื้นที่เสี่ยงภัยแล้ง',
+        fillOpacity: 0.6, width: 0, color: '#555555',
+        customColors: {
+          '4-5 ครั้งในรอบ 10 ปี': '#f1a812',
+          'ตั้งแต่ 6 ครั้งขึ้นไปในรอบ 10 ปี': '#ff0000',
+          'ไม่เกิน 3 ครั้งในรอบ 10 ปี': '#ffff2a',
+        }
+      },
       { id: 'geology', file: 'layers/geology.js', type: 'category', field: 'Formation', z: 13,
-        legend: 'หน่วยหินทางธรณีวิทยา' },
+        legend: 'หน่วยหินทางธรณีวิทยา',
+        fillOpacity: 0.6, width: 0, color: '#555555',
+        customColors: {
+          'ตะกอนธารน้ำพา': '#ffffcc',
+          'ภูทอก': '#aae07a',
+          'มหาสารคาม': '#33a02c',
+        }
+      },
       { id: 'hydrology', file: 'layers/hydrology.js', type: 'category', field: 'DESCRIPT_T', z: 14,
-        legend: 'อุทกธรณีวิทยา' }
+        legend: 'อุทกธรณีวิทยา',
+        fillOpacity: 0.6, width: 0, color: '#555555',
+        customColors: {
+          'ชั้นหินให้น้ำคำตากล้า': '#c9f4a2',
+          'ชั้นหินให้น้ำนาหว้า (ภูทอกตอนล่าง)': '#ebbf55',
+        }
+      }
     ]
   }
 ];
 
+/* ---------- 1.3 แผนที่ฐาน ---------- */
 const BASEMAPS = [
   ['NORMAL', 'Longdo แผนที่ปกติ'], ['GRAY', 'Longdo สีเทา'], ['LIGHT', 'Longdo สีอ่อน'],
   ['DARK', 'Longdo สีเข้ม'], ['EASY', 'Longdo แบบเรียบง่าย'], ['POLITICAL', 'เขตการปกครอง'],
@@ -152,27 +226,29 @@ const BASE_OVERLAYS = [
   ['RASTER_POI', 'สถานที่สำคัญ (POI)']
 ];
 
+/* ---------- 1.4 ชุดสีสำรอง (ใช้กับค่าที่ไม่ได้ใส่ใน customColors) ---------- */
 const PALETTE = ['#1b9e77','#d95f02','#7570b3','#e7298a','#66a61e','#e6ab02','#a6761d',
                  '#1f78b4','#b2df8a','#fb9a99','#fdbf6f','#cab2d6','#ffff99','#8dd3c7',
                  '#bebada','#fb8072','#80b1d3','#b3de69','#fccde5','#bc80bd'];
 const FILL_OPACITY = 0.6;
 
-/* ===================== ส่วนที่ 2: ระบบทำงาน ===================== */
+/* ============================================================
+   ส่วนที่ 2: ระบบทำงาน (ไม่ต้องแก้)
+   ============================================================ */
 let map;
 const STATE = {};
-
-function log(msg, isErr) {
-  const box = document.getElementById('log');
-  box.innerHTML += `<div class="${isErr ? 'e' : ''}">${isErr ? '✖' : '✔'} ${msg}</div>`;
-  (isErr ? console.error : console.log)(msg);
-}
+const log = (msg, isErr) => (isErr ? console.error : console.log)(msg);
 
 const esc = s => String(s ?? '').replace(/[&<>"]/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const toLoc = c => ({ lon: +c[0], lat: +c[1] });
+
 function rgba(hex, a) {
-  if (hex === 'transparent' || !hex) return 'transparent';
-  const n = parseInt(hex.slice(1), 16);
+  if (!hex || hex === 'transparent') return 'rgba(0,0,0,0)';
+  if (hex[0] !== '#') return hex;
+  let h = hex.slice(1);
+  if (h.length === 3) h = [...h].map(c => c + c).join('');
+  const n = parseInt(h, 16);
   return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
 }
 
@@ -194,16 +270,20 @@ function geoBounds(geo) {
   return b;
 }
 
-function zoomTo(b) {
+// ซูมให้เห็นขอบเขต โดยขยายขอบออกตาม pad
+function zoomTo(b, pad = 0) {
   if (!b || b.minLon > b.maxLon) return;
-  try { map.bound(b); }
+  const dx = (b.maxLon - b.minLon) * pad, dy = (b.maxLat - b.minLat) * pad;
+  const box = { minLon: b.minLon - dx, maxLon: b.maxLon + dx,
+                minLat: b.minLat - dy, maxLat: b.maxLat + dy };
+  try { map.bound(box); }
   catch (e) {
     const el = document.getElementById('map');
-    const lonSpan = Math.max(b.maxLon - b.minLon, 0.001);
-    const latSpan = Math.max(b.maxLat - b.minLat, 0.001);
+    const lonSpan = Math.max(box.maxLon - box.minLon, 0.001);
+    const latSpan = Math.max(box.maxLat - box.minLat, 0.001);
     const z = Math.floor(Math.min(Math.log2(el.clientWidth * 360 / 256 / lonSpan),
                                   Math.log2(el.clientHeight * 360 / 256 / (latSpan * 1.1))));
-    map.location({ lon: (b.minLon + b.maxLon) / 2, lat: (b.minLat + b.maxLat) / 2 });
+    map.location({ lon: (box.minLon + box.maxLon) / 2, lat: (box.minLat + box.maxLat) / 2 });
     map.zoom(Math.min(Math.max(z, 5), 18));
   }
 }
@@ -217,9 +297,8 @@ function readJsLayer(file) {
     sc.onload = () => {
       const key = Object.keys(window).filter(k => !before.has(k))
         .find(k => window[k] && window[k].type === 'FeatureCollection');
-      if (!key) return reject(new Error(`${file}: เปิดไฟล์ได้ แต่ไม่พบข้อมูล GeoJSON ข้างใน`));
-      const geo = window[key], b = geoBounds(geo);
-      resolve(geo);
+      if (!key) return reject(new Error(`${file}: ไม่พบข้อมูล GeoJSON ข้างใน`));
+      resolve(window[key]);
     };
     sc.onerror = () => reject(new Error(`หาไฟล์ ${file} ไม่เจอ`));
     document.head.appendChild(sc);
@@ -251,6 +330,17 @@ function pinHtml(icon, text, color) {
   return `<div class="pin">${sym}${lbl}</div>`;
 }
 
+// คำนวณสีพื้น ความทึบ และเส้นขอบของ polygon
+function polyStyle(cfg, s, p) {
+  const isCat = cfg.type === 'category';
+  const fill = isCat ? (s.colors[p[cfg.field]] || '#999999')
+                     : (cfg.fillColor || cfg.color || '#3388ff');
+  const opacity = cfg.fillOpacity ?? (isCat ? FILL_OPACITY : 0.4);
+  const width = cfg.width ?? (isCat ? 0.5 : 1.5);
+  const line = width > 0 ? (cfg.color || (isCat ? '#3c3c3c' : fill)) : null;
+  return { fill, opacity, width, line };
+}
+
 function buildOverlays(s, geo) {
   const cfg = s.cfg, out = [];
 
@@ -258,7 +348,12 @@ function buildOverlays(s, geo) {
     const vals = [...new Set(geo.features.map(f => f.properties?.[cfg.field]))]
       .filter(v => v !== null && v !== undefined && v !== '')
       .sort((a, b) => String(a).localeCompare(String(b), 'th'));
-    vals.forEach((v, i) => s.colors[v] = PALETTE[i % PALETTE.length]);
+    if (!vals.length) log(`${cfg.id}: ไม่พบฟิลด์ "${cfg.field}"`, true);
+    vals.forEach((v, i) =>
+      s.colors[v] = (cfg.customColors && cfg.customColors[v]) || PALETTE[i % PALETTE.length]);
+    // แสดงรายการค่าในฟิลด์ใน Console (F12) เพื่อคัดลอกไปใส่ customColors
+    console.log(`[${cfg.id}] ค่าในฟิลด์ "${cfg.field}":\n` +
+      vals.map(v => `'${v}': '${s.colors[v]}',`).join('\n'));
   }
 
   for (const f of geo.features) {
@@ -285,26 +380,25 @@ function buildOverlays(s, geo) {
 
         if (cfg.type === 'outline') {
           polys.forEach(pg => pg.forEach(ring => out.push(new longdo.Polyline(ring.map(toLoc), {
-            title: cfg.legend, detail, lineColor: cfg.color, lineWidth: cfg.width || 2
+            title: cfg.legend, detail, lineColor: cfg.color || '#d32f2f', lineWidth: cfg.width || 2
           }))));
-          if (text) {
-            const best = polys.map(pg => ringInfo(pg[0])).sort((a, b) => b.area - a.area)[0];
-            out.push(new longdo.Marker(toLoc(best.center), {
-              clickable: false,
-              icon: { html: `<div class="pin poly"><span class="lbl">${esc(text)}</span></div>`,
-                      offset: { x: 0, y: 0 } }
-            }));
-          }
         } else {
-          const isCat = cfg.type === 'category';
-          const col = isCat ? (s.colors[p[cfg.field]] || '#999999') : (cfg.fillColor || cfg.color);
-          const lineCol = isCat ? 'rgba(60,60,60,0.6)' : (cfg.color || 'transparent');
+          const st = polyStyle(cfg, s, p);
           polys.forEach(pg => out.push(new longdo.Polygon(pg[0].map(toLoc), {
             title: cfg.legend, detail,
-            lineColor: lineCol,
-            lineWidth: isCat ? 0.5 : (cfg.width ?? 1),
-            fillColor: rgba(col, isCat ? FILL_OPACITY : (cfg.fillOpacity ?? 0.4))
+            lineColor: st.line || 'rgba(0,0,0,0)',
+            lineWidth: st.line ? st.width : 0,
+            fillColor: rgba(st.fill, st.opacity)
           })));
+        }
+
+        if (text && cfg.type !== 'category') {
+          const best = polys.map(pg => ringInfo(pg[0])).sort((a, b) => b.area - a.area)[0];
+          out.push(new longdo.Marker(toLoc(best.center), {
+            clickable: false,
+            icon: { html: `<div class="pin poly"><span class="lbl">${esc(text)}</span></div>`,
+                    offset: { x: 0, y: 0 } }
+          }));
         }
       }
     }
@@ -319,12 +413,13 @@ async function loadLayer(s) {
   s.bounds = geoBounds(geo);
   s.loaded = true;
   s.status.textContent = '';
-  if (s.cfg.fit) zoomTo(s.bounds);
+  if (s.cfg.fit && VIEW.fitToProject) zoomTo(s.bounds, VIEW.fitPadding);
 }
 
 function addAll(s) {
   if (s.onMap) return;
-  try { s.overlays.forEach(o => map.Overlays.add(o)); } catch (e) {}
+  try { s.overlays.forEach(o => map.Overlays.add(o)); }
+  catch (e) { log(`${s.cfg.id}: ${e.message}`, true); }
   s.onMap = true;
 }
 function removeAll(s) {
@@ -340,6 +435,7 @@ async function setVisible(s, on) {
     s.loading ??= loadLayer(s);
     try { await s.loading; }
     catch (e) {
+      log(e.message, true);
       s.status.textContent = 'โหลดไม่ได้'; s.status.classList.add('err');
       s.loading = null; return;
     }
@@ -370,17 +466,21 @@ function symbolHtml(cfg) {
       : `<span style="width:10px;height:10px;border-radius:50%;background:${cfg.color || '#0277bd'};border:2px solid #fff;box-shadow:0 0 2px #000"></span>`;
   if (cfg.type === 'outline')
     return `<span style="width:14px;height:12px;border:2px solid ${cfg.color}"></span>`;
-  if (cfg.type === 'polygon' || cfg.type === 'user')
-    return `<span style="width:14px;height:12px;border:1px solid ${cfg.color || '#333'};background:${rgba(cfg.fillColor || cfg.color, 0.6)}"></span>`;
+  if (cfg.type === 'polygon' || cfg.type === 'user') {
+    const w = cfg.width ?? 1.5;
+    return `<span style="width:14px;height:12px;border:${w > 0 ? 2 : 0}px solid ${cfg.color || cfg.fillColor};
+            background:${rgba(cfg.fillColor || cfg.color, cfg.fillOpacity ?? 0.4)}"></span>`;
+  }
   return `<span style="width:14px;height:12px;border:1px solid #666;
           background:linear-gradient(90deg,${PALETTE[0]} 33%,${PALETTE[1]} 33% 66%,${PALETTE[2]} 66%)"></span>`;
 }
 
 function renderLegend(s) {
   if (s.cfg.type !== 'category') return;
+  const op = s.cfg.fillOpacity ?? FILL_OPACITY;
   s.legendBox.innerHTML = s.visible && s.loaded
     ? Object.entries(s.colors).map(([v, c]) =>
-        `<div><i style="background:${rgba(c, FILL_OPACITY)}"></i>${esc(v)}</div>`).join('')
+        `<div><i style="background:${rgba(c, op)}"></i>${esc(v)}</div>`).join('')
     : '';
 }
 
@@ -437,7 +537,8 @@ function buildBasemap() {
   sel.innerHTML = avail.map(([k, t]) => `<option value="${k}">${t}</option>`).join('');
   if (L.NORMAL) sel.value = 'NORMAL';
   sel.addEventListener('change', () => {
-    try { map.Layers.setBase(L[sel.value]); } catch (e) {}
+    try { map.Layers.setBase(L[sel.value]); }
+    catch (e) { alert('เปลี่ยนแผนที่ฐานไม่ได้: ' + e.message); }
   });
 
   const ov = document.getElementById('baseOv');
@@ -452,13 +553,17 @@ function buildBasemap() {
   });
 }
 
+/* ---------- ผู้ใช้เพิ่มไฟล์เอง ---------- */
 const USER_GROUP = { name: 'ชั้นข้อมูลที่เพิ่มเอง', exclusive: false, layers: [] };
 let userCount = 0;
+const kmlToGeo = text => toGeoJSON.kml(new DOMParser().parseFromString(text, 'text/xml'));
 
 function addUserLayer(name, geo) {
   if (geo.type === 'Feature') geo = { type: 'FeatureCollection', features: [geo] };
-  if (!geo.features || !geo.features.length) throw new Error(`${name}: ไม่มีข้อมูล`);
+  if (!geo.features || !geo.features.length) throw new Error('ไม่มีข้อมูลในไฟล์');
   const b = geoBounds(geo);
+  if (b.minLon < -180 || b.maxLon > 180 || b.minLat < -90 || b.maxLat > 90)
+    throw new Error('พิกัดไม่ใช่ WGS84 (ถ้าเป็น Shapefile ให้ใส่ไฟล์ .prj มาด้วย)');
 
   userCount++;
   const keys = Object.keys(geo.features[0].properties || {});
@@ -486,13 +591,13 @@ async function handleFiles(fileList) {
       const base = s.name.slice(0, -4).toLowerCase();
       const find = e => files.find(f => f.name.toLowerCase() === `${base}.${e}`);
       const dbf = find('dbf'), prj = find('prj'), cpg = find('cpg');
-      if (!dbf) throw new Error(`ต้องเลือก .dbf คู่กับ .shp`);
+      if (!dbf) throw new Error('ต้องเลือกไฟล์ .dbf มาพร้อมกับ .shp');
       const geo = shp.combine([
         await shp.parseShp(await s.arrayBuffer(), prj ? await prj.text() : undefined),
         await shp.parseDbf(await dbf.arrayBuffer(), cpg ? await cpg.text() : undefined)
       ]);
       addUserLayer(s.name, geo);
-    } catch (e) { log(e.message, true); }
+    } catch (e) { alert(`${s.name}: ${e.message}`); }
   }
 
   for (const f of files) {
@@ -501,16 +606,19 @@ async function handleFiles(fileList) {
       if (e === 'geojson' || e === 'json') {
         addUserLayer(f.name, JSON.parse(await f.text()));
       } else if (e === 'kml') {
-        addUserLayer(f.name, toGeoJSON.kml(new DOMParser().parseFromString(await f.text(), 'text/xml')));
+        addUserLayer(f.name, kmlToGeo(await f.text()));
       } else if (e === 'kmz') {
         const zip = await JSZip.loadAsync(await f.arrayBuffer());
         const k = Object.values(zip.files).find(z => z.name.toLowerCase().endsWith('.kml'));
-        addUserLayer(f.name, toGeoJSON.kml(new DOMParser().parseFromString(await k.async('string'), 'text/xml')));
+        if (!k) throw new Error('ไม่พบไฟล์ .kml ข้างใน KMZ');
+        addUserLayer(f.name, kmlToGeo(await k.async('string')));
       } else if (e === 'zip') {
         const r = await shp(await f.arrayBuffer());
         (Array.isArray(r) ? r : [r]).forEach(g => addUserLayer(g.fileName || f.name, g));
+      } else if (!['shp', 'dbf', 'prj', 'cpg', 'shx', 'sbn', 'sbx', 'xml', 'qmd'].includes(e)) {
+        alert(`${f.name}: ไม่รองรับไฟล์ชนิดนี้`);
       }
-    } catch (err) {}
+    } catch (err) { alert(`${f.name}: ${err.message}`); }
   }
 }
 
@@ -526,6 +634,7 @@ function setupUpload() {
   });
 }
 
+/* ---------- เริ่มต้น ---------- */
 let started = false;
 function startLayers() {
   if (started) return;
@@ -535,25 +644,26 @@ function startLayers() {
 }
 
 function init() {
-  if (typeof longdo === 'undefined') return;
+  if (typeof longdo === 'undefined') { alert('โหลด Longdo Map API ไม่ได้'); return; }
   buildPanel();
   setupUpload();
 
   try {
     map = new longdo.Map({
       placeholder: document.getElementById('map'),
-      location: { lon: 102.91, lat: 15.87 },
-      zoom: 11,
+      location: VIEW.center,
+      zoom: VIEW.zoom,
       lastView: false
     });
-  } catch (e) { return; }
+  } catch (e) { alert('สร้างแผนที่ไม่ได้: ' + e.message); return; }
 
   buildBasemap();
 
-  document.getElementById('fitBtn').addEventListener('click', () => {
+  document.getElementById('fitBtn').addEventListener('click', async () => {
     const s = STATE.project;
-    if (s && s.bounds) zoomTo(s.bounds);
-    else if (s) toggleLayer(s, true);
+    if (!s) return;
+    if (!s.loaded) { toggleLayer(s, true); try { await s.loading; } catch (e) {} }
+    zoomTo(s.bounds, VIEW.fitPadding);
   });
 
   try {
